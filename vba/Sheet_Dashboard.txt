@@ -1,0 +1,16 @@
+'==========================================================================
+' Paste into the code module of the "Dashboard" sheet
+' (VBA editor: double-click the Dashboard sheet under "Microsoft Excel Objects").
+' Double-clicking a Task ID opens the task in the form.
+'==========================================================================
+Option Explicit
+
+Private Sub Worksheet_BeforeDoubleClick(ByVal Target As Range, Cancel As Boolean)
+    Dim v As Variant
+    v = Target.Cells(1, 1).Value
+    If IsError(v) Then Exit Sub
+    If IsTaskId(CStr(v)) Then
+        Cancel = True
+        EditTaskById CStr(v)
+    End If
+End Sub

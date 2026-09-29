@@ -1,0 +1,9 @@
+'==========================================================================
+' Paste into the "ThisWorkbook" code module.
+'==========================================================================
+Option Explicit
+
+Private Sub Workbook_Open()
+    On Error Resume Next            ' before SetupWorkbook has run there is nothing to refresh
+    RefreshDashboard
+End Sub

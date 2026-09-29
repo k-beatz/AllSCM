@@ -1,0 +1,16 @@
+'==========================================================================
+' Paste into the code module of the "Database" sheet.
+' Double-clicking anywhere in a task row opens that task in the form.
+'==========================================================================
+Option Explicit
+
+Private Sub Worksheet_BeforeDoubleClick(ByVal Target As Range, Cancel As Boolean)
+    Dim v As Variant
+    If Target.Row < 2 Then Exit Sub
+    v = Me.Cells(Target.Row, COL_ID).Value
+    If IsError(v) Then Exit Sub
+    If IsTaskId(CStr(v)) Then
+        Cancel = True
+        EditTaskById CStr(v)
+    End If
+End Sub

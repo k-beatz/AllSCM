@@ -1,0 +1,3 @@
+# VBA editor imports need Windows line endings - store files exactly as committed
+*.bas -text
+vba/*.txt -text

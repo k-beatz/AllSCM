@@ -1,0 +1,403 @@
+'==========================================================================
+' frmTask - task entry / edit form
+'
+' SETUP: Insert > UserForm, set its (Name) to frmTask, then paste this whole
+' file into the form's code window. All controls are created at runtime in
+' UserForm_Initialize, so nothing has to be drawn by hand.
+'
+' Dynamic sections:
+'   Amazon -> Order Number, [x] Sent to Invoice Team for payment
+'   Paypal -> [x] Sent to Invoice Team for archiving, Customs/Import Charges Status
+'   AMOS   -> Part Type, Handling Type
+'             Handling = Third-Party Repair -> Current Location/Vendor, Expected Return Date
+'==========================================================================
+Option Explicit
+
+' --- Layout (points) --------------------------------------------------------
+Private Const FORM_W As Single = 396
+Private Const LBL_LEFT As Single = 12
+Private Const LBL_W As Single = 118
+Private Const FLD_LEFT As Single = 134
+Private Const FLD_W As Single = 240
+Private Const ROW_H As Single = 24
+Private Const CTL_H As Single = 18
+Private Const GAP As Single = 8
+Private Const FRA_LEFT As Single = 6
+Private Const FRA_W As Single = 378
+Private Const FRA_H2 As Single = ROW_H * 2 + 24          ' frame with two rows
+Private Const IN_LBL As Single = 6                        ' label left inside a frame
+Private Const IN_FLD As Single = FLD_LEFT - FRA_LEFT - 2  ' fields line up with base fields
+Private Const REP_LEFT As Single = 4
+Private Const REP_TOP As Single = 6 + ROW_H * 2
+Private Const AMOS_H_FULL As Single = REP_TOP + FRA_H2 + 22
+Private Const BTN_W As Single = 94
+Private Const BTN_H As Single = 26
+
+' --- Controls with events -----------------------------------------------------
+Private WithEvents cboCategory As MSForms.ComboBox
+Private WithEvents cboHandling As MSForms.ComboBox
+Private WithEvents cmdToday As MSForms.CommandButton
+Private WithEvents cmdSave As MSForms.CommandButton
+Private WithEvents cmdCancel As MSForms.CommandButton
+Private WithEvents cmdOpenFolder As MSForms.CommandButton
+
+' --- Other controls --------------------------------------------------------------
+Private txtTaskID As MSForms.TextBox
+Private txtTitle As MSForms.TextBox
+Private txtDate As MSForms.TextBox
+Private cboStatus As MSForms.ComboBox
+Private lblNotes As MSForms.Label
+Private txtNotes As MSForms.TextBox
+
+Private fraAmazon As MSForms.Frame
+Private txtOrderNo As MSForms.TextBox
+Private chkInvPayment As MSForms.CheckBox
+
+Private fraPaypal As MSForms.Frame
+Private chkInvArchive As MSForms.CheckBox
+Private cboCustoms As MSForms.ComboBox
+
+Private fraAmos As MSForms.Frame
+Private cboPartType As MSForms.ComboBox
+Private fraRepair As MSForms.Frame
+Private txtVendor As MSForms.TextBox
+Private txtReturnDate As MSForms.TextBox
+
+' --- State ------------------------------------------------------------------------
+Private mIsNew As Boolean
+Private mFolderPath As String
+Private mDynTop As Single
+Private mReady As Boolean
+Private mCtlCount As Long
+
+'==========================================================================
+' Build the form
+'==========================================================================
+Private Sub UserForm_Initialize()
+    Dim t As Single
+
+    Me.Width = FORM_W
+    Me.Caption = APP_NAME
+
+    t = 10
+    AddLabel Me, "Task ID", LBL_LEFT, t
+    Set txtTaskID = AddTextBox(Me, FLD_LEFT, t, 150)
+    txtTaskID.Locked = True
+    txtTaskID.TabStop = False
+    txtTaskID.BackColor = &H8000000F
+    t = t + ROW_H
+
+    AddLabel Me, "Title *", LBL_LEFT, t
+    Set txtTitle = AddTextBox(Me, FLD_LEFT, t, FLD_W)
+    t = t + ROW_H
+
+    AddLabel Me, "Date *", LBL_LEFT, t
+    Set txtDate = AddTextBox(Me, FLD_LEFT, t, 100)
+    Set cmdToday = AddButton(Me, "Today", FLD_LEFT + 106, t, 50, CTL_H)
+    t = t + ROW_H
+
+    AddLabel Me, "Status *", LBL_LEFT, t
+    Set cboStatus = AddCombo(Me, FLD_LEFT, t, 160, StatusList(), True)
+    t = t + ROW_H
+
+    AddLabel Me, "Category *", LBL_LEFT, t
+    Set cboCategory = AddCombo(Me, FLD_LEFT, t, 160, CategoryList(), True)
+    t = t + ROW_H + 4
+    mDynTop = t
+
+    ' --- Amazon ---------------------------------------------------------------
+    Set fraAmazon = AddFrame(Me, "Amazon", FRA_LEFT, t, FRA_W, FRA_H2)
+    AddLabel fraAmazon, "Order Number", IN_LBL, 6
+    Set txtOrderNo = AddTextBox(fraAmazon, IN_FLD, 6, FLD_W)
+    Set chkInvPayment = AddCheckBox(fraAmazon, "Sent to Invoice Team for payment", IN_FLD, 6 + ROW_H, FLD_W)
+
+    ' --- Paypal ---------------------------------------------------------------
+    Set fraPaypal = AddFrame(Me, "Paypal", FRA_LEFT, t, FRA_W, FRA_H2)
+    Set chkInvArchive = AddCheckBox(fraPaypal, "Sent to Invoice Team for archiving", IN_FLD, 6, FLD_W)
+    AddLabel fraPaypal, "Customs / Import charges", IN_LBL, 6 + ROW_H
+    Set cboCustoms = AddCombo(fraPaypal, IN_FLD, 6 + ROW_H, FLD_W, CustomsList(), False)
+
+    ' --- AMOS -------------------------------------------------------------------
+    Set fraAmos = AddFrame(Me, "AMOS", FRA_LEFT, t, FRA_W, AMOS_H_FULL)
+    AddLabel fraAmos, "Part Type *", IN_LBL, 6
+    Set cboPartType = AddCombo(fraAmos, IN_FLD, 6, 140, PartTypeList(), True)
+    AddLabel fraAmos, "Handling Type *", IN_LBL, 6 + ROW_H
+    Set cboHandling = AddCombo(fraAmos, IN_FLD, 6 + ROW_H, 140, HandlingList(), True)
+
+    Set fraRepair = AddFrame(fraAmos, "Third-Party Repair", REP_LEFT, REP_TOP, FRA_W - 14, FRA_H2)
+    AddLabel fraRepair, "Location / Vendor *", IN_LBL - 2, 6
+    Set txtVendor = AddTextBox(fraRepair, IN_FLD - REP_LEFT - 2, 6, FLD_W - 4)
+    AddLabel fraRepair, "Expected Return Date", IN_LBL - 2, 6 + ROW_H
+    Set txtReturnDate = AddTextBox(fraRepair, IN_FLD - REP_LEFT - 2, 6 + ROW_H, 100)
+
+    ' --- Notes + buttons (positioned by LayoutForm) -------------------------
+    Set lblNotes = AddLabel(Me, "Notes", LBL_LEFT, t)
+    Set txtNotes = AddTextBox(Me, FLD_LEFT, t, FLD_W, 54)
+    txtNotes.MultiLine = True
+    txtNotes.WordWrap = True
+    txtNotes.EnterKeyBehavior = True
+    txtNotes.ScrollBars = fmScrollBarsVertical
+
+    Set cmdOpenFolder = AddButton(Me, "Open Folder", LBL_LEFT, t, BTN_W, BTN_H)
+    Set cmdCancel = AddButton(Me, "Cancel", FLD_LEFT + FLD_W - 2 * BTN_W - 6, t, BTN_W, BTN_H)
+    Set cmdSave = AddButton(Me, "Save", FLD_LEFT + FLD_W - BTN_W, t, BTN_W, BTN_H)
+    cmdSave.Font.Bold = True
+    cmdCancel.Cancel = True                           ' Esc closes the form
+
+    mReady = True
+    LayoutForm
+End Sub
+
+'==========================================================================
+' Called by modTaskManager before Show
+'==========================================================================
+Public Sub PrepareNew()
+    mIsNew = True
+    Me.Caption = APP_NAME & " - New Task"
+    txtTaskID.Text = NextTaskId()                     ' preview; final ID is assigned on save
+    txtDate.Text = FormatDateShort(Date)
+    SetCombo cboStatus, STATUS_OPEN
+    cmdSave.Caption = "Create Task"
+    cmdOpenFolder.Visible = False
+    LayoutForm
+End Sub
+
+Public Function LoadTask(ByVal taskId As String) As Boolean
+    Dim rec As Variant
+
+    If Not GetTaskRecord(taskId, rec, mFolderPath) Then
+        MsgBox "Task " & taskId & " was not found.", vbExclamation, APP_NAME
+        Exit Function
+    End If
+
+    mIsNew = False
+    Me.Caption = APP_NAME & " - Edit " & rec(COL_ID)
+    txtTaskID.Text = CStr(rec(COL_ID))
+    txtTitle.Text = CStr(rec(COL_TITLE))
+    If IsDate(rec(COL_DATE)) Then txtDate.Text = FormatDateShort(CDate(rec(COL_DATE)))
+    SetCombo cboStatus, CStr(rec(COL_STATUS))
+    SetCombo cboCategory, CStr(rec(COL_CATEGORY))
+
+    txtOrderNo.Text = CStr(rec(COL_ORDERNO))
+    chkInvPayment.Value = (CStr(rec(COL_INV_PAY)) = "Yes")
+    chkInvArchive.Value = (CStr(rec(COL_INV_ARCH)) = "Yes")
+    SetCombo cboCustoms, CStr(rec(COL_CUSTOMS))
+    SetCombo cboPartType, CStr(rec(COL_PARTTYPE))
+    SetCombo cboHandling, CStr(rec(COL_HANDLING))
+    txtVendor.Text = CStr(rec(COL_VENDOR))
+    If IsDate(rec(COL_RETURN)) Then txtReturnDate.Text = FormatDateShort(CDate(rec(COL_RETURN)))
+    txtNotes.Text = CStr(rec(COL_NOTES))
+
+    cmdSave.Caption = "Save Changes"
+    cmdOpenFolder.Visible = (Len(mFolderPath) > 0)
+    LayoutForm
+    LoadTask = True
+End Function
+
+'==========================================================================
+' Dynamic layout: show only the section of the selected category
+'==========================================================================
+Private Sub LayoutForm()
+    Dim t As Single, isRepair As Boolean
+    If Not mReady Then Exit Sub
+
+    t = mDynTop
+    fraAmazon.Visible = False
+    fraPaypal.Visible = False
+    fraAmos.Visible = False
+
+    Select Case cboCategory.Text
+        Case CAT_AMAZON
+            PlaceFrame fraAmazon, t
+        Case CAT_PAYPAL
+            PlaceFrame fraPaypal, t
+        Case CAT_AMOS
+            isRepair = (cboHandling.Text = HANDLING_REPAIR)
+            fraRepair.Visible = isRepair
+            fraAmos.Height = IIf(isRepair, AMOS_H_FULL, FRA_H2)
+            PlaceFrame fraAmos, t
+    End Select
+
+    lblNotes.Top = t + 3
+    txtNotes.Top = t
+    t = t + txtNotes.Height + GAP * 2
+
+    cmdOpenFolder.Top = t
+    cmdCancel.Top = t
+    cmdSave.Top = t
+    Me.Height = t + BTN_H + 36
+End Sub
+
+Private Sub PlaceFrame(ByVal fra As MSForms.Frame, ByRef t As Single)
+    fra.Top = t
+    fra.Visible = True
+    t = t + fra.Height + GAP
+End Sub
+
+Private Sub cboCategory_Change()
+    LayoutForm
+End Sub
+
+Private Sub cboHandling_Change()
+    LayoutForm
+End Sub
+
+'==========================================================================
+' Buttons
+'==========================================================================
+Private Sub cmdToday_Click()
+    txtDate.Text = FormatDateShort(Date)
+End Sub
+
+Private Sub cmdOpenFolder_Click()
+    OpenFolder mFolderPath
+End Sub
+
+Private Sub cmdCancel_Click()
+    Me.Hide
+End Sub
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    If CloseMode = vbFormControlMenu Then        ' red X: hide, the caller unloads
+        Cancel = True
+        Me.Hide
+    End If
+End Sub
+
+Private Sub cmdSave_Click()
+    Dim rec As Variant, d As Date, rd As Date, msg As String
+    Dim cat As String, isRepair As Boolean
+
+    ' --- Validation -----------------------------------------------------------
+    cat = cboCategory.Text
+    isRepair = (cat = CAT_AMOS And cboHandling.Text = HANDLING_REPAIR)
+    If Len(Trim$(txtTitle.Text)) = 0 Then msg = msg & "- Title is required" & vbLf
+    If Not TryParseDate(txtDate.Text, d) Then msg = msg & "- Date is missing or not a valid date" & vbLf
+    If cboStatus.ListIndex < 0 Then msg = msg & "- Select a Status" & vbLf
+    If cboCategory.ListIndex < 0 Then msg = msg & "- Select a Category" & vbLf
+    If cat = CAT_AMOS Then
+        If cboPartType.ListIndex < 0 Then msg = msg & "- Select a Part Type" & vbLf
+        If cboHandling.ListIndex < 0 Then msg = msg & "- Select a Handling Type" & vbLf
+    End If
+    If isRepair Then
+        If Len(Trim$(txtVendor.Text)) = 0 Then msg = msg & "- Current Location/Vendor is required for a third-party repair" & vbLf
+        If Len(Trim$(txtReturnDate.Text)) > 0 And Not TryParseDate(txtReturnDate.Text, rd) Then
+            msg = msg & "- Expected Return Date is not a valid date" & vbLf
+        End If
+    End If
+    If Len(msg) > 0 Then
+        MsgBox "Please check:" & vbLf & vbLf & msg, vbExclamation, APP_NAME
+        Exit Sub
+    End If
+
+    ' --- Build the record (fields of other categories stay empty) -------------
+    ReDim rec(1 To COL_COUNT)
+    If Not mIsNew Then rec(COL_ID) = txtTaskID.Text
+    rec(COL_TITLE) = Trim$(txtTitle.Text)
+    rec(COL_DATE) = d
+    rec(COL_STATUS) = cboStatus.Text
+    rec(COL_CATEGORY) = cat
+    rec(COL_NOTES) = Trim$(txtNotes.Text)
+
+    Select Case cat
+        Case CAT_AMAZON
+            rec(COL_ORDERNO) = Trim$(txtOrderNo.Text)
+            rec(COL_INV_PAY) = YesNo(chkInvPayment.Value)
+        Case CAT_PAYPAL
+            rec(COL_INV_ARCH) = YesNo(chkInvArchive.Value)
+            rec(COL_CUSTOMS) = Trim$(cboCustoms.Text)
+        Case CAT_AMOS
+            rec(COL_PARTTYPE) = cboPartType.Text
+            rec(COL_HANDLING) = cboHandling.Text
+            If isRepair Then
+                rec(COL_VENDOR) = Trim$(txtVendor.Text)
+                If Len(Trim$(txtReturnDate.Text)) > 0 Then rec(COL_RETURN) = rd
+            End If
+    End Select
+
+    ' Writes the row, creates the folder + hyperlink, refreshes the Dashboard
+    If SaveTask(rec, mIsNew) Then Me.Hide
+End Sub
+
+'==========================================================================
+' Control factory helpers
+'==========================================================================
+Private Function NewCtl(ByVal host As Object, ByVal progId As String, ByVal l As Single, _
+                        ByVal t As Single, ByVal w As Single, ByVal h As Single) As Object
+    Dim ctl As Object
+    mCtlCount = mCtlCount + 1
+    Set ctl = host.Controls.Add(progId, "dyn" & mCtlCount, True)
+    ctl.Left = l
+    ctl.Top = t
+    ctl.Width = w
+    ctl.Height = h
+    Set NewCtl = ctl
+End Function
+
+Private Function AddLabel(ByVal host As Object, ByVal caption As String, _
+                          ByVal l As Single, ByVal t As Single) As MSForms.Label
+    Dim lbl As MSForms.Label
+    Set lbl = NewCtl(host, "Forms.Label.1", l, t + 3, LBL_W, 14)
+    lbl.Caption = caption
+    Set AddLabel = lbl
+End Function
+
+Private Function AddTextBox(ByVal host As Object, ByVal l As Single, ByVal t As Single, _
+                            ByVal w As Single, Optional ByVal h As Single = CTL_H) As MSForms.TextBox
+    Set AddTextBox = NewCtl(host, "Forms.TextBox.1", l, t, w, h)
+End Function
+
+Private Function AddCombo(ByVal host As Object, ByVal l As Single, ByVal t As Single, ByVal w As Single, _
+                          ByVal items As Variant, ByVal listOnly As Boolean) As MSForms.ComboBox
+    Dim cbo As MSForms.ComboBox, v As Variant
+    Set cbo = NewCtl(host, "Forms.ComboBox.1", l, t, w, CTL_H)
+    cbo.Style = IIf(listOnly, fmStyleDropDownList, fmStyleDropDownCombo)
+    For Each v In items
+        cbo.AddItem v
+    Next v
+    Set AddCombo = cbo
+End Function
+
+Private Function AddCheckBox(ByVal host As Object, ByVal caption As String, ByVal l As Single, _
+                             ByVal t As Single, ByVal w As Single) As MSForms.CheckBox
+    Dim chk As MSForms.CheckBox
+    Set chk = NewCtl(host, "Forms.CheckBox.1", l, t, w, CTL_H)
+    chk.Caption = caption
+    Set AddCheckBox = chk
+End Function
+
+Private Function AddButton(ByVal host As Object, ByVal caption As String, ByVal l As Single, _
+                           ByVal t As Single, ByVal w As Single, ByVal h As Single) As MSForms.CommandButton
+    Dim btn As MSForms.CommandButton
+    Set btn = NewCtl(host, "Forms.CommandButton.1", l, t, w, h)
+    btn.Caption = caption
+    Set AddButton = btn
+End Function
+
+Private Function AddFrame(ByVal host As Object, ByVal caption As String, ByVal l As Single, _
+                          ByVal t As Single, ByVal w As Single, ByVal h As Single) As MSForms.Frame
+    Dim fra As MSForms.Frame
+    Set fra = NewCtl(host, "Forms.Frame.1", l, t, w, h)
+    fra.Caption = caption
+    fra.Visible = False
+    Set AddFrame = fra
+End Function
+
+'==========================================================================
+' Small helpers
+'==========================================================================
+Private Sub SetCombo(ByVal cbo As MSForms.ComboBox, ByVal v As String)
+    Dim i As Long
+    For i = 0 To cbo.ListCount - 1
+        If StrComp(cbo.List(i), v, vbTextCompare) = 0 Then
+            cbo.ListIndex = i
+            Exit Sub
+        End If
+    Next i
+    If cbo.Style = fmStyleDropDownCombo Then cbo.Text = v Else cbo.ListIndex = -1
+End Sub
+
+Private Function YesNo(ByVal v As Variant) As String
+    If IsNull(v) Then v = False
+    YesNo = IIf(v = True, "Yes", "No")
+End Function
