@@ -9,6 +9,10 @@ Eine lokal laufende Anwendung, die eine Aktie per Kürzel analysiert und die Emp
 **Aktueller Stand: Phase 1 (Charts).** Die Empfehlung beruht vorläufig nur auf vier technischen
 Indikatoren (gleitende Durchschnitte, RSI, MACD, Bollinger-Bänder). Die News-Analyse mit KI kommt in Phase 2.
 
+> 💡 **Ohne Installation:** Unter [`colab/Aktienanalyse_PaperTrading.ipynb`](colab/Aktienanalyse_PaperTrading.ipynb)
+> liegt eine eigenständige Google-Colab-Variante mit Paper-Trading (10.000 € virtuell, 0,1 % Ordergebühr).
+> Die drei Zellen gibt es auch einzeln als `colab/zelle1_setup.py`, `zelle2_engine.py` und `zelle3_ausfuehrung.py`.
+
 ## Installation unter Windows (einmalig)
 
 1. **Python installieren:** Unter <https://www.python.org/downloads/> Python 3.11 oder neuer
