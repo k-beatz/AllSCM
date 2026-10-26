@@ -233,38 +233,53 @@ def lade_kursdaten(symbol, zeitraum="2y"):
     return daten
 
 
+def _indikatoren_mit_pandas_ta(df):
+    """Berechnet die Indikatoren mit der Bibliothek pandas-ta."""
+    schluss = df["Close"]
+    df["SMA50"] = ta.sma(schluss, length=50)
+    df["SMA200"] = ta.sma(schluss, length=200)
+    df["RSI"] = ta.rsi(schluss, length=14)
+    macd = ta.macd(schluss, fast=12, slow=26, signal=9)
+    # pandas-ta liefert drei Spalten: MACD-Linie, Histogramm, Signallinie
+    df["MACD"] = macd.iloc[:, 0]
+    df["MACD_Hist"] = macd.iloc[:, 1]
+    df["MACD_Signal"] = macd.iloc[:, 2]
+    return df
+
+
+def _indikatoren_selbst_berechnet(df):
+    """Ersatzberechnung mit denselben Standardformeln – nur mit pandas, ohne Zusatzbibliothek."""
+    schluss = df["Close"]
+    df["SMA50"] = schluss.rolling(50).mean()
+    df["SMA200"] = schluss.rolling(200).mean()
+    veraenderung = schluss.diff()
+    gewinne = veraenderung.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+    verluste = (-veraenderung.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+    df["RSI"] = 100 - 100 / (1 + gewinne / verluste)
+    df["MACD"] = schluss.ewm(span=12, adjust=False).mean() - schluss.ewm(span=26, adjust=False).mean()
+    df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+    df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
+    return df
+
+
 def berechne_indikatoren(daten):
     """
     Fügt den Kursdaten die Indikatoren hinzu:
       SMA50 / SMA200 = Durchschnittskurs der letzten 50 bzw. 200 Tage (Trend)
       RSI            = Stärke der Bewegung von 0–100 (unter 30 überverkauft, über 70 überkauft)
       MACD           = Momentum: Abstand zwischen schnellem und langsamem Durchschnitt
+    Zuerst wird pandas-ta versucht. Klappt das nicht (z. B. wegen eines Versionskonflikts
+    in Colab), rechnet das Programm automatisch selbst – mit identischen Ergebnissen.
     """
-    df = daten.copy()
-    schluss = df["Close"]
-
+    global PANDAS_TA_VERFUEGBAR
     if PANDAS_TA_VERFUEGBAR:
-        df["SMA50"] = ta.sma(schluss, length=50)
-        df["SMA200"] = ta.sma(schluss, length=200)
-        df["RSI"] = ta.rsi(schluss, length=14)
-        macd = ta.macd(schluss, fast=12, slow=26, signal=9)
-        # pandas-ta liefert drei Spalten: MACD-Linie, Histogramm, Signallinie
-        df["MACD"] = macd.iloc[:, 0]
-        df["MACD_Hist"] = macd.iloc[:, 1]
-        df["MACD_Signal"] = macd.iloc[:, 2]
-    else:
-        # Ersatzberechnung mit denselben Standardformeln
-        df["SMA50"] = schluss.rolling(50).mean()
-        df["SMA200"] = schluss.rolling(200).mean()
-        veraenderung = schluss.diff()
-        gewinne = veraenderung.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
-        verluste = (-veraenderung.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
-        df["RSI"] = 100 - 100 / (1 + gewinne / verluste)
-        df["MACD"] = schluss.ewm(span=12, adjust=False).mean() - schluss.ewm(span=26, adjust=False).mean()
-        df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
-
-    return df
+        try:
+            return _indikatoren_mit_pandas_ta(daten.copy())
+        except Exception as fehler:
+            PANDAS_TA_VERFUEGBAR = False   # ab jetzt direkt die Ersatzberechnung nutzen
+            print(f"⚠️ pandas-ta funktioniert in dieser Sitzung nicht ({type(fehler).__name__}) – "
+                  "die eingebaute Ersatzberechnung wird genutzt.")
+    return _indikatoren_selbst_berechnet(daten.copy())
 
 
 def erzeuge_signal(df):
