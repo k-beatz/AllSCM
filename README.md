@@ -1,5 +1,8 @@
 # AllSCM – SCM & Logistics Task Manager (Excel VBA)
 
+> This repository also contains a separate Python project, the stock analysis app in
+> [`aktienanalyse/`](aktienanalyse/README.md) (documentation in German).
+
 A task manager for Amazon, Paypal and AMOS logistics work that runs entirely inside one
 macro-enabled Excel workbook (`.xlsm`). You don't need a database, Python, add-ins or Windows API calls.
 

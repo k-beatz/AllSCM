@@ -1,0 +1,11 @@
+# Virtuelle Umgebung und Python-Zwischendateien
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Geheime Schlüssel (API-Key) – niemals in Git!
+.env
+
+# Lokaler Zwischenspeicher (SQLite)
+*.db
